@@ -258,6 +258,13 @@
   var EMPTY = '(없음)';
 
   function typeLabel(r) { return r.type === 'inquiry' ? '문의' : '요청'; }
+  // 제목은 v0.12.0부터 입력하지 않는다. 예전 요청은 제목을 요청 내용 첫 줄로 보여 주고, 목록 요약 자리에는 제목 또는 내용 첫 줄을 쓴다.
+  function displayContent(r) { return r.title ? r.title + '\n' + r.content : r.content; }
+  function summary(r) {
+    var text = r.title || r.content || '';
+    var line = text.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; })[0] || '';
+    return line.length > 60 ? line.slice(0, 60) + '…' : line;
+  }
   function isClosed(r) { return r.status === 'done' || r.status === 'rejected'; }
   function statusLabel(r) {
     if (r.type === 'inquiry') return r.status === 'done' ? '답변 완료' : '미답변';
@@ -271,8 +278,7 @@
   var COLUMNS = [
     { key: 'no', label: 'No', width: '78px', filter: null, value: function (r) { return r.no; } },
     { key: 'type', label: '구분', width: '74px', filter: 'set', value: typeLabel },
-    { key: 'title', label: '제목', width: '17%', filter: 'text', value: function (r) { return r.title; } },
-    { key: 'content', label: '요청 내용', width: '27%', filter: 'text', value: function (r) { return r.content; } },
+    { key: 'content', label: '요청 내용', width: '42%', filter: 'text', value: displayContent },
     { key: 'replies', label: '답변', width: '29%', filter: 'text', value: repliesText },
     { key: 'requester', label: '요청자', width: '96px', filter: 'set', value: function (r) { return r.requester; } },
     { key: 'requestDate', label: '요청일', width: '112px', filter: 'date', value: function (r) { return r.requestDate; } },
@@ -413,7 +419,7 @@
       item.appendChild(no);
       var title = el('span', 'title');
       title.appendChild(el('span', 'tag ' + (r.type === 'inquiry' ? 'inquiry' : 'dev'), typeLabel(r)));
-      title.appendChild(document.createTextNode(r.title));
+      title.appendChild(document.createTextNode(summary(r)));
       item.appendChild(title);
       bindOpen(item, r);
       list.appendChild(item);
@@ -563,8 +569,7 @@
       type.appendChild(el('span', 'tag ' + (r.type === 'inquiry' ? 'inquiry' : 'dev'), typeLabel(r)));
       tr.appendChild(type);
 
-      tr.appendChild(el('td', 'title', r.title));
-      tr.appendChild(el('td', 'pre', r.content));
+      tr.appendChild(el('td', 'pre', displayContent(r)));
 
       var rep = el('td');
       r.replies.forEach(function (x) {
@@ -758,7 +763,7 @@
   function openDetail(r) {
     closePop();
     $('mNo').textContent = r.no + ' · ' + typeLabel(r);
-    $('mTitle').textContent = r.title;
+    $('mTitle').textContent = summary(r);
     var meta = $('mMeta');
     meta.innerHTML = '';
     var items = [['요청자', r.requester], ['요청일', r.requestDate]];
