@@ -278,7 +278,9 @@
   var COLUMNS = [
     { key: 'no', label: 'No', width: '78px', filter: null, value: function (r) { return r.no; } },
     { key: 'type', label: '구분', width: '74px', filter: 'set', value: typeLabel },
-    { key: 'content', label: '요청 내용', width: '42%', filter: 'text', value: displayContent },
+    // 메뉴/화면 (v0.13.0). 예전 게시 파일에는 없으므로 빈 값으로 본다.
+    { key: 'menu', label: '메뉴/화면', width: '120px', filter: 'set', value: function (r) { return r.menu || ''; } },
+    { key: 'content', label: '요청 내용', width: '38%', filter: 'text', value: displayContent },
     { key: 'replies', label: '답변', width: '29%', filter: 'text', value: repliesText },
     { key: 'requester', label: '요청자', width: '96px', filter: 'set', value: function (r) { return r.requester; } },
     { key: 'requestDate', label: '요청일', width: '112px', filter: 'date', value: function (r) { return r.requestDate; } },
@@ -488,8 +490,8 @@
   // ───────── 검색·필터 ─────────
   function terms(text) { return (text || '').toLowerCase().split(/\s+/).filter(Boolean); }
 
-  // 관리 프로그램 검색과 같은 대상: 번호·제목·요청 내용·요청자·답변 (R-12)
-  function searchable(r) { return [r.no, r.title, r.content, r.requester, repliesText(r)].join('\n').toLowerCase(); }
+  // 관리 프로그램 검색과 같은 대상: 번호·제목(예전)·메뉴/화면·요청 내용·요청자·답변 (R-12)
+  function searchable(r) { return [r.no, r.title, r.menu || '', r.content, r.requester, repliesText(r)].join('\n').toLowerCase(); }
 
   function isFilterOn(key) {
     var f = filters[key];
@@ -569,6 +571,7 @@
       type.appendChild(el('span', 'tag ' + (r.type === 'inquiry' ? 'inquiry' : 'dev'), typeLabel(r)));
       tr.appendChild(type);
 
+      tr.appendChild(el('td', 'pre', r.menu || ''));
       tr.appendChild(el('td', 'pre', displayContent(r)));
 
       var rep = el('td');
@@ -766,7 +769,7 @@
     $('mTitle').textContent = summary(r);
     var meta = $('mMeta');
     meta.innerHTML = '';
-    var items = [['요청자', r.requester], ['요청일', r.requestDate]];
+    var items = [['메뉴/화면', r.menu || ''], ['요청자', r.requester], ['요청일', r.requestDate]];
     if (r.type !== 'inquiry') items.push(['중요도', priorityLabel(r)]);
     items.push(['상태', statusLabel(r)]);
     if (r.completedAt) items.push([r.type === 'inquiry' ? '답변 완료일' : '완료일', fmt(r.completedAt, true)]);
