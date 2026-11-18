@@ -92,6 +92,9 @@
   .btn:hover { background: var(--surface); }
   .btn:disabled { color: var(--muted); cursor: default; background: var(--bg); }
   .result { color: var(--sub); font-size: 13px; margin-left: auto; }
+  .check { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 4px; cursor: pointer; white-space: nowrap; user-select: none; }
+  .check input { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--primary); }
+  .recent .info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .active-filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 20px 10px; }
   .active-filters:empty { display: none; }
   .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 3px 6px 3px 10px; }
@@ -208,6 +211,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="search" type="text" placeholder="검색 — 띄어 쓰면 모두 포함 (예: BOM 김철수)" autocomplete="off">
       </div>
+      <label class="check" title="완료·반려되지 않은 요청만, 중요도 높은 순(긴급 → 높음 → 보통 → 낮음)으로 보여 줍니다"><input id="priorityMode" type="checkbox">미완료 + 중요도 높은 순</label>
       <button class="btn" id="resetAll" type="button">검색·필터 초기화</button>
       <div class="result" id="result"></div>
     </div>
@@ -292,6 +296,7 @@
   var rows = [];
   var filters = {};          // key → Set | string | {from,to}
   var sort = null;           // {key, dir}
+  var priorityMode = false;  // [미완료 + 중요도 높은 순] 체크 (관리 프로그램 R-13과 같은 규칙)
   var searchText = '';
   var popKey = null;
 
@@ -419,10 +424,19 @@
       var no = el('span', 'no', r.no);
       no.style.color = r.type === 'inquiry' ? 'var(--inquiry)' : 'var(--primary)';
       item.appendChild(no);
-      var title = el('span', 'title');
-      title.appendChild(el('span', 'tag ' + (r.type === 'inquiry' ? 'inquiry' : 'dev'), typeLabel(r)));
-      title.appendChild(document.createTextNode(summary(r)));
-      item.appendChild(title);
+      // 요청 내용 대신 메뉴/화면 · 요청자 · 중요도를 한 줄로 (빈 값은 건너뜀, 문의는 중요도 없음).
+      var info = el('span', 'info');
+      info.appendChild(el('span', 'tag ' + (r.type === 'inquiry' ? 'inquiry' : 'dev'), typeLabel(r)));
+      var parts = [];
+      if (r.menu) parts.push(el('span', null, r.menu));
+      if (r.requester) parts.push(el('span', null, r.requester));
+      var prio = priorityLabel(r);
+      if (prio) parts.push(el('span', r.priority === 'urgent' ? 'prio-urgent' : r.priority === 'high' ? 'prio-high' : '', prio));
+      parts.forEach(function (p, i) {
+        if (i > 0) info.appendChild(document.createTextNode(' · '));
+        info.appendChild(p);
+      });
+      item.appendChild(info);
       bindOpen(item, r);
       list.appendChild(item);
     });
@@ -480,6 +494,8 @@
   }
 
   function toggleSort(key) {
+    // 열 정렬을 고르면 중요도순 보기는 끈다 (두 정렬이 겹치면 어떤 순서인지 헷갈리므로).
+    setPriorityMode(false);
     if (!sort || sort.key !== key) sort = { key: key, dir: 1 };
     else if (sort.dir === 1) sort.dir = -1;
     else sort = null;
@@ -502,6 +518,7 @@
   }
 
   function passes(r, skipKey) {
+    if (priorityMode && isClosed(r)) return false;
     var t = terms(searchText);
     if (t.length) {
       var hay = searchable(r);
@@ -543,9 +560,25 @@
     return function (a, b) { return (col.value(a) || '').localeCompare(col.value(b) || '', 'ko'); };
   }
 
+  // R-13과 같은 순서: 긴급 → 높음 → 보통 → 낮음 (문의는 중요도가 없어 보통과 같음), 같으면 요청일 오래된 순 → 번호 순.
+  function priorityOrder(a, b) {
+    var ra = a.type === 'inquiry' ? PRIORITY_RANK.normal : (PRIORITY_RANK[a.priority] || 0);
+    var rb = b.type === 'inquiry' ? PRIORITY_RANK.normal : (PRIORITY_RANK[b.priority] || 0);
+    if (ra !== rb) return rb - ra;
+    if (a.requestDate !== b.requestDate) return a.requestDate < b.requestDate ? -1 : 1;
+    return a.no < b.no ? -1 : a.no > b.no ? 1 : 0;
+  }
+
+  function setPriorityMode(on) {
+    priorityMode = on;
+    $('priorityMode').checked = on;
+  }
+
   function visibleRows() {
     var list = rows.filter(function (r) { return passes(r); });
-    if (sort) {
+    if (priorityMode) {
+      list.sort(priorityOrder);
+    } else if (sort) {
       var cmp = compareBy(sort.key);
       list.sort(function (a, b) { return cmp(a, b) * sort.dir || defaultOrder(a, b); });
     } else {
@@ -599,7 +632,7 @@
     });
     $('noRows').hidden = list.length > 0;
     $('result').textContent = list.length === rows.length ? '총 ' + rows.length + '건' : list.length + '건 / 전체 ' + rows.length + '건';
-    $('resetAll').disabled = !searchText && !COLUMNS.some(function (c) { return isFilterOn(c.key); });
+    $('resetAll').disabled = !searchText && !priorityMode && !COLUMNS.some(function (c) { return isFilterOn(c.key); });
     renderChips();
   }
 
@@ -805,8 +838,16 @@
     clearTimeout(searchTimer);
     searchTimer = setTimeout(function () { searchText = e.target.value; renderRows(); }, 120);
   });
+  $('priorityMode').addEventListener('change', function (e) {
+    // 중요도순으로 볼 때는 열 정렬을 풀어 화살표 표시와 실제 순서가 어긋나지 않게 한다.
+    priorityMode = e.target.checked;
+    if (priorityMode) sort = null;
+    renderHead();
+    renderRows();
+  });
   $('resetAll').addEventListener('click', function () {
     filters = {};
+    setPriorityMode(false);
     searchText = '';
     $('search').value = '';
     closePop();
